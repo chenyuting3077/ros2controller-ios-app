@@ -16,6 +16,8 @@ struct JoystickView: View {
 
     var body: some View {
         GeometryReader { geo in
+            let isLandscape = geo.size.width > geo.size.height
+
             ZStack {
                 Color(.systemBackground).ignoresSafeArea()
 
@@ -51,22 +53,41 @@ struct JoystickView: View {
                     .padding(.horizontal)
                     .padding(.vertical, 8)
 
-                    Spacer()
+                    if isLandscape {
+                        Spacer()
 
-                    // Joystick row
-                    HStack {
-                        Spacer()
-                        JoystickPadView(label: "linear", size: joystickSize(geo)) { v in
-                            leftJoystick = v
+                        // In landscape, keep sticks near bottom corners for thumb reach.
+                        HStack {
+                            JoystickPadView(label: "linear", size: joystickSize(geo)) { v in
+                                leftJoystick = v
+                            }
+
+                            Spacer(minLength: 24)
+
+                            JoystickPadView(label: "yaw", size: joystickSize(geo)) { v in
+                                rightJoystick = v
+                            }
                         }
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 16)
+                    } else {
                         Spacer()
-                        JoystickPadView(label: "yaw", size: joystickSize(geo)) { v in
-                            rightJoystick = v
+
+                        // Portrait keeps centered sticks.
+                        HStack {
+                            Spacer()
+                            JoystickPadView(label: "linear", size: joystickSize(geo)) { v in
+                                leftJoystick = v
+                            }
+                            Spacer()
+                            JoystickPadView(label: "yaw", size: joystickSize(geo)) { v in
+                                rightJoystick = v
+                            }
+                            Spacer()
                         }
+
                         Spacer()
                     }
-
-                    Spacer()
                 }
             }
         }
