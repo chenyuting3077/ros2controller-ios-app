@@ -1,5 +1,7 @@
 import Foundation
 import Observation
+import UIKit
+import CoreGraphics
 
 enum ConnectionState: Equatable {
     case disconnected
@@ -32,6 +34,9 @@ class ROSBridgeManager: NSObject {
     var connectionState: ConnectionState = .disconnected
     var allTopics: [String] = []
     var topicStats: [String: TopicStats] = [:]
+    var latestCameraImage: UIImage?
+
+    private var cameraTopic: String = ""
 
     private var webSocketTask: URLSessionWebSocketTask?
     private var urlSession: URLSession?
@@ -58,6 +63,7 @@ class ROSBridgeManager: NSObject {
         webSocketTask?.cancel(with: .goingAway, reason: nil)
         webSocketTask = nil
         connectionState = .disconnected
+        latestCameraImage = nil
         stopStatsTimer()
         subscribedTopics.removeAll()
         advertisedTopics.removeAll()
@@ -107,6 +113,30 @@ class ROSBridgeManager: NSObject {
         let msg: [String: Any] = [
             "op": "unsubscribe",
             "topic": topic
+        ]
+        send(msg)
+    }
+
+    func setCameraSubscription(to topic: String) {
+        let trimmed = topic.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if cameraTopic != trimmed {
+            if !cameraTopic.isEmpty {
+                unsubscribe(topic: cameraTopic)
+            }
+            cameraTopic = trimmed
+            latestCameraImage = nil
+        }
+
+        guard connectionState.isConnected, !cameraTopic.isEmpty else { return }
+
+        subscribedTopics.insert(cameraTopic)
+        let msg: [String: Any] = [
+            "op": "subscribe",
+            "id": "camera-\(cameraTopic)",
+            "topic": cameraTopic,
+            "queue_length": 1,
+            "throttle_rate": 100
         ]
         send(msg)
     }
@@ -188,10 +218,162 @@ class ROSBridgeManager: NSObject {
         case "publish":
             if let topic = json["topic"] as? String {
                 topicStats[topic, default: TopicStats()].update(with: messageSize)
+
+                if topic == cameraTopic,
+                   let payload = json["msg"] as? [String: Any],
+                   let image = decodeImageMessage(payload) {
+                    latestCameraImage = image
+                }
             }
         default:
             break
         }
+    }
+
+    private func decodeImageMessage(_ msg: [String: Any]) -> UIImage? {
+        if let data = imageData(from: msg["data"]),
+           let image = UIImage(data: data) {
+            return image
+        }
+
+        guard let encoding = (msg["encoding"] as? String)?.lowercased(),
+              let width = intValue(msg["width"]),
+              let height = intValue(msg["height"]),
+              let data = imageData(from: msg["data"]) else {
+            return nil
+        }
+
+        return makeRawImage(data: data, width: width, height: height, encoding: encoding)
+    }
+
+    private func imageData(from raw: Any?) -> Data? {
+        switch raw {
+        case let data as Data:
+            return data
+        case let string as String:
+            return Data(base64Encoded: string, options: .ignoreUnknownCharacters)
+        case let bytes as [UInt8]:
+            return Data(bytes)
+        case let numbers as [Int]:
+            return Data(numbers.map { UInt8(clamping: $0) })
+        case let numbers as [NSNumber]:
+            return Data(numbers.map { UInt8(truncating: $0) })
+        default:
+            return nil
+        }
+    }
+
+    private func intValue(_ raw: Any?) -> Int? {
+        if let value = raw as? Int { return value }
+        if let value = raw as? NSNumber { return value.intValue }
+        if let value = raw as? String { return Int(value) }
+        return nil
+    }
+
+    private func makeRawImage(data: Data, width: Int, height: Int, encoding: String) -> UIImage? {
+        switch encoding {
+        case "rgb8":
+            return makeCGImage(
+                data: data,
+                width: width,
+                height: height,
+                bitsPerPixel: 24,
+                bytesPerRow: width * 3,
+                colorSpace: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue)
+            )
+        case "bgr8":
+            var converted = Data(count: width * height * 3)
+            let convertedCount = converted.count
+            converted.withUnsafeMutableBytes { destBuffer in
+                data.withUnsafeBytes { srcBuffer in
+                    let dest = destBuffer.bindMemory(to: UInt8.self)
+                    let src = srcBuffer.bindMemory(to: UInt8.self)
+                    guard let destBase = dest.baseAddress, let srcBase = src.baseAddress else { return }
+                    let byteCount = min(src.count, convertedCount)
+                    var index = 0
+                    while index + 2 < byteCount {
+                        destBase[index] = srcBase[index + 2]
+                        destBase[index + 1] = srcBase[index + 1]
+                        destBase[index + 2] = srcBase[index]
+                        index += 3
+                    }
+                }
+            }
+            return makeCGImage(
+                data: converted,
+                width: width,
+                height: height,
+                bitsPerPixel: 24,
+                bytesPerRow: width * 3,
+                colorSpace: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue)
+            )
+        case "rgba8":
+            return makeCGImage(
+                data: data,
+                width: width,
+                height: height,
+                bitsPerPixel: 32,
+                bytesPerRow: width * 4,
+                colorSpace: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue)
+            )
+        case "bgra8":
+            return makeCGImage(
+                data: data,
+                width: width,
+                height: height,
+                bitsPerPixel: 32,
+                bytesPerRow: width * 4,
+                colorSpace: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: [.byteOrder32Little, CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue)]
+            )
+        case "mono8":
+            return makeCGImage(
+                data: data,
+                width: width,
+                height: height,
+                bitsPerPixel: 8,
+                bytesPerRow: width,
+                colorSpace: CGColorSpaceCreateDeviceGray(),
+                bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue)
+            )
+        default:
+            return nil
+        }
+    }
+
+    private func makeCGImage(
+        data: Data,
+        width: Int,
+        height: Int,
+        bitsPerPixel: Int,
+        bytesPerRow: Int,
+        colorSpace: CGColorSpace,
+        bitmapInfo: CGBitmapInfo
+    ) -> UIImage? {
+        guard width > 0,
+              height > 0,
+              data.count >= bytesPerRow * height,
+              let provider = CGDataProvider(data: data as CFData),
+              let cgImage = CGImage(
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bitsPerPixel: bitsPerPixel,
+                bytesPerRow: bytesPerRow,
+                space: colorSpace,
+                bitmapInfo: bitmapInfo,
+                provider: provider,
+                decode: nil,
+                shouldInterpolate: true,
+                intent: .defaultIntent
+              ) else {
+            return nil
+        }
+
+        return UIImage(cgImage: cgImage)
     }
 
     // MARK: - Stats timer

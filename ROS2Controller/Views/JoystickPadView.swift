@@ -26,10 +26,14 @@ struct JoystickPadView: View {
                 .frame(width: 1, height: size * 0.8)
 
             Circle()
-                .fill(Color.accentColor.opacity(0.85))
+                .fill(Color.white)
+                .overlay(
+                    Circle()
+                        .stroke(Color.white.opacity(0.95), lineWidth: 1.5)
+                )
                 .frame(width: thumbRadius * 2, height: thumbRadius * 2)
                 .offset(thumbOffset)
-                .shadow(radius: 4)
+                .shadow(color: Color.white.opacity(0.35), radius: 6)
 
             Text(label)
                 .font(.caption2)

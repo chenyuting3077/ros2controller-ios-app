@@ -5,14 +5,14 @@ struct JoystickView: View {
     @Environment(AppSettings.self) private var settings
     @Environment(\.scenePhase) private var scenePhase
 
-    @State private var leftJoystick: CGPoint = .zero    // x=linearY, y=linearX
-    @State private var rightJoystick: CGPoint = .zero   // x=angularZ
+    @State private var leftJoystick: CGPoint = .zero    // x=-linearY, y=linearX (left is positive y)
+    @State private var rightJoystick: CGPoint = .zero   // x=-angularZ (left is positive yaw)
     @State private var showControlSettings = false
     @State private var publishTimer: Timer?
 
     private var linearX: Double { leftJoystick.y * settings.maxLinearSpeed }
-    private var linearY: Double { leftJoystick.x * settings.maxLinearSpeed }
-    private var angularZ: Double { rightJoystick.x * settings.maxAngularSpeed }
+    private var linearY: Double { -leftJoystick.x * settings.maxLinearSpeed }
+    private var angularZ: Double { -rightJoystick.x * settings.maxAngularSpeed }
 
     var body: some View {
         GeometryReader { geo in
@@ -53,6 +53,10 @@ struct JoystickView: View {
                     .padding(.horizontal)
                     .padding(.vertical, 8)
 
+                    cameraPreviewCard(geo)
+                        .padding(.horizontal)
+                        .padding(.top, 4)
+
                     if isLandscape {
                         Spacer()
 
@@ -73,20 +77,20 @@ struct JoystickView: View {
                     } else {
                         Spacer()
 
-                        // Portrait keeps centered sticks.
+                        // In portrait, also keep sticks near the bottom corners for thumb reach.
                         HStack {
-                            Spacer()
                             JoystickPadView(label: "linear", size: joystickSize(geo)) { v in
                                 leftJoystick = v
                             }
-                            Spacer()
+
+                            Spacer(minLength: 24)
+
                             JoystickPadView(label: "yaw", size: joystickSize(geo)) { v in
                                 rightJoystick = v
                             }
-                            Spacer()
                         }
-
-                        Spacer()
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 24)
                     }
                 }
             }
@@ -95,10 +99,21 @@ struct JoystickView: View {
             ControlSettingsSheet()
                 .presentationDetents([.medium])
         }
-        .onAppear { startTimer() }
+        .onAppear {
+            startTimer()
+            ros.setCameraSubscription(to: settings.imageTopic)
+        }
         .onDisappear { stopTimer() }
         .onChange(of: settings.publishHz) { _, _ in
             startTimer()
+        }
+        .onChange(of: settings.imageTopic) { _, _ in
+            ros.setCameraSubscription(to: settings.imageTopic)
+        }
+        .onChange(of: ros.connectionState) { _, state in
+            if state.isConnected {
+                ros.setCameraSubscription(to: settings.imageTopic)
+            }
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .background {
@@ -106,8 +121,61 @@ struct JoystickView: View {
                 stopTimer()
             } else if phase == .active {
                 startTimer()
+                ros.setCameraSubscription(to: settings.imageTopic)
             }
         }
+    }
+
+    @ViewBuilder
+    private func cameraPreviewCard(_ geo: GeometryProxy) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color(.secondarySystemBackground))
+
+            if let frame = ros.latestCameraImage {
+                Image(uiImage: frame)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                VStack(spacing: 8) {
+                    Image(systemName: "video.slash")
+                        .font(.system(size: 28))
+                        .foregroundStyle(.secondary)
+
+                    Text(
+                        settings.imageTopic.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        ? "請在設定填入影像 topic"
+                        : "等待 \(settings.imageTopic) 的影像…"
+                    )
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: cameraPreviewHeight(geo))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color(.systemGray4), lineWidth: 1)
+        )
+        .overlay(alignment: .topLeading) {
+            if !settings.imageTopic.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text(settings.imageTopic)
+                    .font(.caption2.monospaced())
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .padding(10)
+            }
+        }
+    }
+
+    private func cameraPreviewHeight(_ geo: GeometryProxy) -> CGFloat {
+        let ratio = geo.size.width > geo.size.height ? 0.24 : 0.22
+        return min(max(geo.size.height * ratio, 120), 210)
     }
 
     // MARK: - Timer
@@ -175,6 +243,10 @@ struct ControlSettingsSheet: View {
             Form {
                 Section("Topic") {
                     TextField("cmd_vel Topic", text: $s.cmdVelTopic)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+
+                    TextField("Image Topic", text: $s.imageTopic)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
                 }

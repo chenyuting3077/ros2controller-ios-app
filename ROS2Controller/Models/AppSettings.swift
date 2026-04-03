@@ -12,6 +12,9 @@ class AppSettings {
     var cmdVelTopic: String {
         didSet { UserDefaults.standard.set(cmdVelTopic, forKey: "cmdVelTopic") }
     }
+    var imageTopic: String {
+        didSet { UserDefaults.standard.set(imageTopic, forKey: "imageTopic") }
+    }
     var maxLinearSpeed: Double {
         didSet { UserDefaults.standard.set(maxLinearSpeed, forKey: "maxLinearSpeed") }
     }
@@ -33,6 +36,7 @@ class AppSettings {
         let savedPort = d.integer(forKey: "port")
         port = savedPort == 0 ? 9090 : savedPort
         cmdVelTopic = d.string(forKey: "cmdVelTopic") ?? "/cmd_vel"
+        imageTopic = d.string(forKey: "imageTopic") ?? "/camera/image/compressed"
         let lin = d.double(forKey: "maxLinearSpeed")
         maxLinearSpeed = lin == 0 ? 1.0 : lin
         let ang = d.double(forKey: "maxAngularSpeed")
