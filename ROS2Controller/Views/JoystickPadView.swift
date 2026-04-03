@@ -9,8 +9,10 @@ struct JoystickPadView: View {
     @State private var lastValue: CGPoint = .zero
     @State private var releaseTimer: Timer?
 
-    private var radius: CGFloat { size / 2 }
-    private var thumbRadius: CGFloat { size * 0.22 }
+    private var padSize: CGFloat { size * 0.88 }
+    private var radius: CGFloat { padSize / 2 }
+    private var thumbRadius: CGFloat { padSize * 0.22 }
+    private let dragDamping: CGFloat = 0.3
     private let releaseDuration: TimeInterval = 0.15
     private let releaseSteps = 12
 
@@ -19,15 +21,15 @@ struct JoystickPadView: View {
             Circle()
                 .fill(Color(.systemGray5))
                 .overlay(Circle().stroke(Color(.systemGray3), lineWidth: 2))
-                .frame(width: size, height: size)
+                .frame(width: padSize, height: padSize)
 
             // Cross-hair lines
             Rectangle()
                 .fill(Color(.systemGray4))
-                .frame(width: size * 0.8, height: 1)
+                .frame(width: padSize * 0.8, height: 1)
             Rectangle()
                 .fill(Color(.systemGray4))
-                .frame(width: 1, height: size * 0.8)
+                .frame(width: 1, height: padSize * 0.8)
 
             Circle()
                 .fill(Color.white)
@@ -42,7 +44,7 @@ struct JoystickPadView: View {
             Text(label)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
-                .offset(y: size * 0.42)
+                .offset(y: padSize * 0.42)
         }
         .frame(width: size, height: size)
         .gesture(
@@ -52,8 +54,9 @@ struct JoystickPadView: View {
                     releaseTimer = nil
 
                     let clamped = clamp(value.translation)
-                    let normalizedValue = normalized(clamped)
-                    thumbOffset = clamped
+                    let damped = dampedOffset(from: thumbOffset, to: clamped)
+                    let normalizedValue = normalized(damped)
+                    thumbOffset = damped
                     lastValue = normalizedValue
                     onChange(normalizedValue)
                 }
@@ -102,11 +105,18 @@ struct JoystickPadView: View {
         }
     }
 
+    private func dampedOffset(from current: CGSize, to target: CGSize) -> CGSize {
+        CGSize(
+            width: current.width + (target.width - current.width) * dragDamping,
+            height: current.height + (target.height - current.height) * dragDamping
+        )
+    }
+
     private func clamp(_ translation: CGSize) -> CGSize {
         let x = translation.width
         let y = translation.height
         let dist = sqrt(x * x + y * y)
-        let maxDist = radius - thumbRadius
+        let maxDist = radius
         if dist <= maxDist {
             return translation
         }
@@ -115,7 +125,7 @@ struct JoystickPadView: View {
     }
 
     private func normalized(_ offset: CGSize) -> CGPoint {
-        let maxDist = radius - thumbRadius
+        let maxDist = radius
         guard maxDist > 0 else { return .zero }
         return CGPoint(
             x: Double(offset.width / maxDist),
