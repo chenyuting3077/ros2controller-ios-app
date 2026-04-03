@@ -18,7 +18,8 @@ struct PortraitJoystickLayoutView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-        .padding(.horizontal, 20)
-        .padding(.bottom, 24)
+        .padding(.leading, 50)
+        .padding(.trailing, 50)
+        .padding(.bottom, 50)
     }
 }

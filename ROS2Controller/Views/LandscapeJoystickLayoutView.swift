@@ -18,7 +18,8 @@ struct LandscapeJoystickLayoutView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-        .padding(.horizontal, 24)
-        .padding(.bottom, 12)
+        .padding(.leading, 6)
+        .padding(.trailing, 6)
+        .padding(.bottom, 0)
     }
 }
