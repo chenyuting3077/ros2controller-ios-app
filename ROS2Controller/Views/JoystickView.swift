@@ -174,8 +174,9 @@ struct JoystickView: View {
     }
 
     private func cameraPreviewHeight(_ geo: GeometryProxy) -> CGFloat {
-        let ratio = geo.size.width > geo.size.height ? 0.24 : 0.22
-        return min(max(geo.size.height * ratio, 120), 210)
+        let availableWidth = max(geo.size.width - 32, 0)
+        let height = availableWidth * 9.0 / 16.0
+        return min(max(height, 120), 240)
     }
 
     // MARK: - Timer
