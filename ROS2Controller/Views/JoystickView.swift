@@ -58,39 +58,17 @@ struct JoystickView: View {
                         .padding(.top, 4)
 
                     if isLandscape {
-                        Spacer()
-
-                        // In landscape, keep sticks near bottom corners for thumb reach.
-                        HStack {
-                            JoystickPadView(label: "linear", size: joystickSize(geo)) { v in
-                                leftJoystick = v
-                            }
-
-                            Spacer(minLength: 24)
-
-                            JoystickPadView(label: "yaw", size: joystickSize(geo)) { v in
-                                rightJoystick = v
-                            }
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 16)
+                        LandscapeJoystickLayoutView(
+                            joystickSize: joystickSize(geo),
+                            leftJoystick: $leftJoystick,
+                            rightJoystick: $rightJoystick
+                        )
                     } else {
-                        Spacer()
-
-                        // In portrait, also keep sticks near the bottom corners for thumb reach.
-                        HStack {
-                            JoystickPadView(label: "linear", size: joystickSize(geo)) { v in
-                                leftJoystick = v
-                            }
-
-                            Spacer(minLength: 24)
-
-                            JoystickPadView(label: "yaw", size: joystickSize(geo)) { v in
-                                rightJoystick = v
-                            }
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 24)
+                        PortraitJoystickLayoutView(
+                            joystickSize: joystickSize(geo),
+                            leftJoystick: $leftJoystick,
+                            rightJoystick: $rightJoystick
+                        )
                     }
                 }
             }
@@ -175,8 +153,13 @@ struct JoystickView: View {
 
     private func cameraPreviewHeight(_ geo: GeometryProxy) -> CGFloat {
         let availableWidth = max(geo.size.width - 32, 0)
-        let height = availableWidth * 9.0 / 16.0
-        return min(max(height, 120), 240)
+        let targetHeight = availableWidth * 9.0 / 16.0
+
+        if geo.size.width > geo.size.height {
+            return min(targetHeight, max(geo.size.height * 0.26, 96))
+        }
+
+        return min(max(targetHeight, 120), 240)
     }
 
     // MARK: - Timer
@@ -228,7 +211,11 @@ struct JoystickView: View {
     }
 
     private func joystickSize(_ geo: GeometryProxy) -> CGFloat {
-        min(geo.size.height * 0.55, geo.size.width * 0.3)
+        if geo.size.width > geo.size.height {
+            return min(geo.size.height * 0.34, geo.size.width * 0.18)
+        }
+
+        return min(geo.size.height * 0.55, geo.size.width * 0.3)
     }
 }
 

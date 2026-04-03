@@ -6,9 +6,13 @@ struct JoystickPadView: View {
     var onChange: (CGPoint) -> Void
 
     @State private var thumbOffset: CGSize = .zero
+    @State private var lastValue: CGPoint = .zero
+    @State private var releaseTimer: Timer?
 
     private var radius: CGFloat { size / 2 }
     private var thumbRadius: CGFloat { size * 0.22 }
+    private let releaseDuration: TimeInterval = 0.15
+    private let releaseSteps = 12
 
     var body: some View {
         ZStack {
@@ -44,17 +48,58 @@ struct JoystickPadView: View {
         .gesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { value in
+                    releaseTimer?.invalidate()
+                    releaseTimer = nil
+
                     let clamped = clamp(value.translation)
+                    let normalizedValue = normalized(clamped)
                     thumbOffset = clamped
-                    onChange(normalized(clamped))
+                    lastValue = normalizedValue
+                    onChange(normalizedValue)
                 }
                 .onEnded { _ in
-                    withAnimation(.spring(response: 0.2)) {
-                        thumbOffset = .zero
-                    }
-                    onChange(.zero)
+                    startSmoothReturn()
                 }
         )
+    }
+
+    private func startSmoothReturn() {
+        releaseTimer?.invalidate()
+
+        let startOffset = thumbOffset
+        let startValue = lastValue
+        guard startOffset != .zero || startValue != .zero else {
+            onChange(.zero)
+            return
+        }
+
+        var step = 0
+        let interval = releaseDuration / Double(releaseSteps)
+        releaseTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { timer in
+            step += 1
+            let progress = min(Double(step) / Double(releaseSteps), 1.0)
+            let remaining = 1.0 - progress
+
+            thumbOffset = CGSize(
+                width: startOffset.width * remaining,
+                height: startOffset.height * remaining
+            )
+
+            let value = CGPoint(
+                x: startValue.x * remaining,
+                y: startValue.y * remaining
+            )
+            lastValue = value
+            onChange(value)
+
+            if progress >= 1.0 {
+                timer.invalidate()
+                releaseTimer = nil
+                thumbOffset = .zero
+                lastValue = .zero
+                onChange(.zero)
+            }
+        }
     }
 
     private func clamp(_ translation: CGSize) -> CGSize {
