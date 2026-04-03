@@ -21,6 +21,10 @@ struct JoystickView: View {
             ZStack {
                 Color(.systemBackground).ignoresSafeArea()
 
+                if isLandscape {
+                    landscapeCameraBackground
+                }
+
                 if !ros.connectionState.isConnected {
                     VStack {
                         Image(systemName: "wifi.slash")
@@ -52,10 +56,20 @@ struct JoystickView: View {
                     }
                     .padding(.horizontal)
                     .padding(.vertical, 8)
+                    .background {
+                        if isLandscape {
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(.ultraThinMaterial)
+                        }
+                    }
+                    .padding(.horizontal, isLandscape ? 8 : 0)
+                    .padding(.top, isLandscape ? 8 : 0)
 
-                    cameraPreviewCard(geo)
-                        .padding(.horizontal)
-                        .padding(.top, 4)
+                    if !isLandscape {
+                        cameraPreviewCard(geo)
+                            .padding(.horizontal)
+                            .padding(.top, 4)
+                    }
 
                     if isLandscape {
                         LandscapeJoystickLayoutView(
@@ -102,6 +116,35 @@ struct JoystickView: View {
                 ros.setCameraSubscription(to: settings.imageTopic)
             }
         }
+    }
+
+    @ViewBuilder
+    private var landscapeCameraBackground: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            if let frame = ros.latestCameraImage {
+                Image(uiImage: frame)
+                    .resizable()
+                    .scaledToFill()
+                    .ignoresSafeArea()
+            } else {
+                VStack(spacing: 10) {
+                    Image(systemName: "video.slash")
+                        .font(.system(size: 36))
+
+                    Text(
+                        settings.imageTopic.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        ? "請在設定填入影像 topic"
+                        : "等待 \(settings.imageTopic) 的影像…"
+                    )
+                    .font(.footnote)
+                }
+                .foregroundStyle(.white.opacity(0.85))
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .allowsHitTesting(false)
     }
 
     @ViewBuilder
